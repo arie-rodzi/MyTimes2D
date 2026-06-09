@@ -848,7 +848,17 @@ with tabs[3]:
         chart_df["status_load"] = chart_df["average_load_status"].fillna(chart_df["status_load"])
     chart_df["chart_label"] = chart_df["jumlah_KS_adjusted"].astype(str) + " avg KS | " + chart_df["bil_subjek"].astype(str) + " subjects"
 
-    if px is not None and not chart_df.empty:
+   if px is not None and not chart_df.empty:
+        # Peta warna korporat yang kemas (Emerald Green, Amber, Soft Red, Slate)
+        status_color_map = {
+            "FAIR_AVERAGE": "#10b981",       # Green (Emerald)
+            "UNDERLOAD_AVERAGE": "#f59e0b",  # Amber / Yellow
+            "OVERLOAD_AVERAGE": "#ef4444",   # Red
+            "FAIR": "#10b981",               # Backup match untuk string biasa
+            "UNDERLOAD": "#f59e0b",
+            "OVERLOAD": "#ef4444"
+        }
+
         fig = px.bar(
             chart_df.sort_values("jumlah_KS_adjusted"),
             x="jumlah_KS_adjusted",
@@ -858,19 +868,54 @@ with tabs[3]:
             color="status_load",
             title="Workload Distribution: KS and Number of Subjects",
             hover_data=["jumlah_KS", "bil_subjek", "minimum_KS", "maksimum_KS", "senarai_subjek"],
+            color_discrete_map=status_color_map  # Guna peta warna premium baru
         )
-        fig.update_traces(textposition="inside")
+        
+        # Kemas kini teks di dalam bar chart
+        fig.update_traces(
+            textposition="inside",
+            textfont=dict(family="Inter, sans-serif", size=11, color="white"),
+            marker=dict(line=dict(width=0)) # Buang border hitam sekeliling bar
+        )
+        
+        # Rekaan Layout Glassmorphism / Putih Bersih
         fig.update_layout(
             height=760,
+            template="plotly_white",  # Tema latar putih bersih, tiada grid kelabu tebal
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             xaxis_title="Adjusted KS",
             yaxis_title="Lecturer",
+            font=dict(family="Inter, sans-serif", size=12, color="#1e293b"),
+            title=dict(
+                font=dict(family="Inter, sans-serif", size=16, color="#0f172a", weight="bold"),
+                pad=dict(b=20)
+            ),
+            # Kedudukan Petunjuk Warna (Legend) di bahagian atas
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                title=dict(text="")
+            ),
+            # Kemas kini garisan grid halus di paksi X sahaja
+            xaxis=dict(
+                showgrid=True,
+                gridcolor="#f1f5f9",
+                zeroline=False
+            ),
+            yaxis=dict(
+                autorange="reversed" # Letakkan pensyarah beban tertinggi di atas sekali
+            )
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.dataframe(chart_df[["pensyarah", "jumlah_KS_adjusted", "bil_subjek"]], use_container_width=True)
-
+        # Jika paparan fallback dataframe, tukar kepada HTML Table yang diclean juga
+        cols_chart_df = ["pensyarah", "jumlah_KS_adjusted", "bil_subjek", "status_load"]
+        df_chart_clean = chart_df[cols_chart_df] if all(c in chart_df.columns for c in cols_chart_df) else chart_df
+        st.write(df_chart_clean.to_html(index=False, classes='clean-table'), unsafe_allow_html=True)
 with tabs[4]:
     st.markdown("### Audit Check")
     if df_unassigned.empty:
