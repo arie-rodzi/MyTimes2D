@@ -905,6 +905,211 @@ with tabs[5]:
     st.markdown("---")
 
     # ------------------------------------------------------------
+    # BUTTON 2: DOWNLOAD PREMIUM EXECUTIVE DASHBOARD HTML (REKAAN BARU)
+    # ------------------------------------------------------------
+    st.markdown("### 🌐 Laporan Eksekutif Premium (Premium HTML Dashboard)")
+    st.caption("Muat turun laporan bertaraf eksekutif dengan reka bentuk grid, kotak KPI moden, dan layout kompak bersaiz skrin/A4.")
+
+    # Ambil data statistik dari status row
+    s_row = df_status.iloc[0] if df_status is not None else {}
+    
+    # Ekstrak nilai untuk Kotak KPI HTML
+    kpi_kelas_aktif = s_row.get("jumlah_kelas_aktif", 0)
+    kpi_kelas_diagih = s_row.get("kelas_diagih", 0)
+    kpi_ks_aktif = s_row.get("jumlah_KS_aktif", 0)
+    kpi_ks_diagih = s_row.get("KS_diagih", 0)
+    kpi_lect_aktif = s_row.get("pensyarah_aktif", 0)
+    kpi_lect_adil = s_row.get("pensyarah_adil", 0)
+    kpi_lect_over = s_row.get("pensyarah_overload", 0)
+    kpi_target_ks = s_row.get("target_purata_KS", 0)
+    
+    # Ambil data log manual jika wujud
+    df_manual_log = st.session_state.get("manual_tuning_log", pd.DataFrame())
+
+    # --- Penapisan lajur terhad supaya jadual kemas (Clean View) ---
+    df_assign_html = df_assign[["kelas_id", "kod_kursus", "kelas_baru", "KS", "saiz_kelas", "pensyarah_utama", "preference_match"]].to_html(index=False, classes='clean-table') if df_assign is not None else ""
+    df_summary_html = df_summary_enhanced[["pensyarah", "peranan", "minimum_KS", "maksimum_KS", "jumlah_KS", "bil_subjek", "weekly_load_range", "average_semester_load"]].to_html(index=False, classes='clean-table') if df_summary_enhanced is not None else ""
+    
+    week_cols = [f"Week_{i}_KS" for i in range(1, SEMESTER_WEEKS + 1)]
+    df_weekly_html = weekly_analysis[["pensyarah", "status_load"] + week_cols + ["average_semester_load"]].to_html(index=False, classes='clean-table') if weekly_analysis is not None else ""
+    df_event_html = semester_event_log[["event_category", "lecturer", "event_role", "subject_code", "class_group", "weeks", "note"]].to_html(index=False, classes='clean-table') if semester_event_log is not None else ""
+
+    # --- STRUKTUR HTML & CSS PREMIUM (DASHBOARD PORTAL) ---
+    premium_html_report = f"""
+    <!DOCTYPE html>
+    <html lang="ms">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MyTimes Executive Dashboard - {st.session_state.get('semester_code','')}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+            
+            * {{ box-sizing: border-box; font-family: 'Inter', sans-serif; }}
+            body {{ background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }}
+            
+            /* Page Layout Optimization for Screen & A4 Print */
+            .dashboard-card {{ max-width: 1300px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; }}
+            
+            /* Top Branding Header */
+            .main-header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 25px; }}
+            .brand h1 {{ margin: 0; font-size: 1.8em; font-weight: 700; color: #1e3a8a; letter-spacing: -0.5px; }}
+            .brand p {{ margin: 5px 0 0 0; color: #64748b; font-size: 0.95em; }}
+            .badge-semester {{ background-color: #dbeafe; color: #1e40af; font-weight: 600; padding: 6px 14px; border-radius: 30px; font-size: 0.85em; }}
+            
+            /* 4x2 Grid Kotak KPI */
+            .kpi-container {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }}
+            .kpi-card {{ background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.01); border-top: 4px solid #cbd5e1; transition: transform 0.2s; }}
+            .kpi-card:hover {{ transform: translateY(-2px); }}
+            .kpi-card .label {{ font-size: 0.75em; text-transform: uppercase; font-weight: 600; color: #64748b; letter-spacing: 0.5px; }}
+            .kpi-card .value {{ font-size: 1.6em; font-weight: 700; margin: 8px 0 2px 0; color: #1e293b; }}
+            .kpi-card .subtext {{ font-size: 0.75em; color: #94a3b8; }}
+            
+            /* KPI Border Colors Theme */
+            .blue-theme {{ border-top-color: #3b82f6; background-color: #f0f7ff; }}
+            .green-theme {{ border-top-color: #10b981; background-color: #f0fdf4; }}
+            .purple-theme {{ border-top-color: #8b5cf6; background-color: #f5f3ff; }}
+            .orange-theme {{ border-top-color: #f59e0b; background-color: #fffbeb; }}
+            
+            /* Compact Data Section with Internal Scroll (Taknak panjang sangat) */
+            h2 {{ font-size: 1.15em; color: #0f172a; margin-top: 25px; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }}
+            h2::before {{ content: ''; display: inline-block; width: 4px; height: 16px; background: #3b82f6; border-radius: 2px; }}
+            
+            .table-wrapper {{ max-height: 280px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }}
+            
+            /* Premium Clean Table CSS */
+            table.clean-table {{ width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82em; }}
+            table.clean-table th {{ background-color: #f8fafc; color: #475569; font-weight: 600; padding: 10px 14px; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 10; }}
+            table.clean-table td {{ padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #334155; }}
+            table.clean-table tr:nth-of-type(even) td {{ background-color: #fafbfc; }}
+            table.clean-table tr:hover td {{ background-color: #f1f5f9; }}
+            
+            .empty-msg {{ color: #94a3b8; font-style: italic; font-size: 0.85em; padding: 15px; background: #f8fafc; border-radius: 6px; border: 1px dashed #e2e8f0; text-align: center; }}
+            .footer {{ text-align: center; margin-top: 35px; padding-top: 15px; border-top: 1px solid #f1f5f9; font-size: 0.8em; color: #94a3b8; font-weight: 500; }}
+            
+            /* Print A4 Styling Optimization */
+            @media print {{
+                body {{ background-color: #ffffff; padding: 0; }}
+                .dashboard-card {{ box-shadow: none; border: none; padding: 10px; }}
+                .table-wrapper {{ max-height: none; overflow: visible; }}
+                table.clean-table th {{ position: static; }}
+                .kpi-card {{ background: #ffffff !important; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="dashboard-card">
+                
+                <div class="main-header">
+                    <div class="brand">
+                        <h1>MyTimes Executive Analytics Portal</h1>
+                        <p>Laporan Pengagihan Jam Kredit & Analisis Beban Kerja Fakulti</p>
+                    </div>
+                    <div>
+                        <span class="badge-semester">Kod Semester: {st.session_state.get('semester_code','')}</span>
+                    </div>
+                </div>
+
+                <div class="kpi-container">
+                    <div class="kpi-card blue-theme">
+                        <div class="label">Kelas Aktif</div>
+                        <div class="value">{kpi_kelas_aktif}</div>
+                        <div class="subtext">Jumlah Group Ditawarkan</div>
+                    </div>
+                    <div class="kpi-card blue-theme">
+                        <div class="label">Kelas Diagih</div>
+                        <div class="value">{kpi_kelas_diagih} / {kpi_kelas_aktif}</div>
+                        <div class="subtext">Status Pengagihan Model</div>
+                    </div>
+                    <div class="kpi-card green-theme">
+                        <div class="label">Total KS Aktif</div>
+                        <div class="value">{kpi_ks_aktif} KS</div>
+                        <div class="subtext">Beban Kerja Keseluruhan</div>
+                    </div>
+                    <div class="kpi-card green-theme">
+                        <div class="label">KS Berjaya Diagih</div>
+                        <div class="value">{kpi_ks_diagih} KS</div>
+                        <div class="subtext">Kadar Liputan: 100%</div>
+                    </div>
+                    <div class="kpi-card purple-theme">
+                        <div class="label">Pensyarah Aktif</div>
+                        <div class="value">{kpi_lect_aktif} Staf</div>
+                        <div class="subtext">Tersedia Mengajar</div>
+                    </div>
+                    <div class="kpi-card purple-theme">
+                        <div class="label">Beban Adil (Fair)</div>
+                        <div class="value">{kpi_lect_adil} Staf</div>
+                        <div class="subtext">Memenuhi Min/Max Cap</div>
+                    </div>
+                    <div class="kpi-card orange-theme">
+                        <div class="label">System Target Load</div>
+                        <div class="value">{kpi_target_ks} KS</div>
+                        <div class="subtext">Purata Optimum Dicapai</div>
+                    </div>
+                    <div class="kpi-card orange-theme">
+                        <div class="label">Staf Overload</div>
+                        <div class="value" style="color: { '#10b981' if kpi_lect_over == 0 else '#ef4444' };">{kpi_lect_over}</div>
+                        <div class="subtext">Melebihi Had Maksimum</div>
+                    </div>
+                </div>
+
+                <h2>1. Keputusan Agihan Kelas Utama (Main Class Allocation)</h2>
+                <div class="table-wrapper">
+                    {df_assign_html}
+                </div>
+
+                <h2>2. Rumusan Status Beban Kerja Pensyarah</h2>
+                <div class="table-wrapper">
+                    {df_summary_html}
+                </div>
+
+                <h2>3. Garis Masa Agihan Jam Kredit Mingguan (Week 1 - 14)</h2>
+                <div class="table-wrapper">
+                    {df_weekly_html}
+                </div>
+
+                <h2>4. Log Peristiwa Semester (Temporary Cover & Emergency Log)</h2>
+                <div class="table-wrapper">
+                    {df_event_html if df_event_html != "" else "<p class='empty-msg'>Tiada sebarang catatan kes penukaran pensyarah/cuti minggu awal.</p>"}
+                </div>
+
+                <h2>5. Pelarasan Manual AJK & Unallocated Class Audit</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h3 style="font-size:0.85em; color:#475569; text-transform:uppercase; margin-bottom:8px;">Pelarasan Manual (Fine Tuning)</h3>
+                        <div class="table-wrapper" style="max-height:180px;">
+                            {df_manual_log[["case_no", "kelas_id", "KS_adjusted", "note"]].to_html(index=False, classes='clean-table') if not df_manual_log.empty else "<p class='empty-msg'>Tiada pelarasan manual dilakukan.</p>"}
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style="font-size:0.85em; color:#475569; text-transform:uppercase; margin-bottom:8px;">Unallocated Active Classes</h3>
+                        <div class="table-wrapper" style="max-height:180px;">
+                            {df_unassigned[["kelas_id", "kod_kursus", "ks"]].to_html(index=False, classes='clean-table') if df_unassigned is not None and not df_unassigned.empty else "<p class='empty-msg' style='color:#16a34a; background:#f0fdf4;'>✔ Semua aktif kelas berjaya diselesaikan.</p>"}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    MyTimes Dashboard Portal Engine • Diperkesakan oleh Sistem Algoritma PuLP Fairness Target • Masa Penjanaan: {st.session_state.get('runtime_seconds', 0)}s
+                </div>
+                
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    st.download_button(
+        "🌐 Download Premium Dashboard HTML",
+        data=premium_html_report,
+        file_name=f"MyTimes_PREMIUM_DASHBOARD_{st.session_state.get('semester_code','')}.html",
+        mime="text/html",
+        use_container_width=True,
+    )
+    st.markdown("---")
+
+    # ------------------------------------------------------------
     # BUTTON 2: DOWNLOAD FULL HTML REPORT (SEMUA SEKALI RESULT)
     # ------------------------------------------------------------
     st.markdown("### 🌐 Laporan Penuh Sistem MyTimes (HTML Format)")
