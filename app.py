@@ -841,20 +841,22 @@ with tabs[3]:
     chart_df["manual_out"] = chart_df["manual_out"].fillna(0.0)
     chart_df["manual_in"] = chart_df["manual_in"].fillna(0.0)
     chart_df["jumlah_KS_adjusted"] = (chart_df["jumlah_KS"] - chart_df["manual_out"] + chart_df["manual_in"]).round(2)
+    
     if weekly_analysis is not None and not weekly_analysis.empty:
         avg_cols = ["pensyarah", "average_semester_load", "peak_weekly_load", "average_load_status"]
         chart_df = chart_df.merge(weekly_analysis[avg_cols], on="pensyarah", how="left")
         chart_df["jumlah_KS_adjusted"] = chart_df["average_semester_load"].fillna(chart_df["jumlah_KS_adjusted"])
         chart_df["status_load"] = chart_df["average_load_status"].fillna(chart_df["status_load"])
+    
     chart_df["chart_label"] = chart_df["jumlah_KS_adjusted"].astype(str) + " avg KS | " + chart_df["bil_subjek"].astype(str) + " subjects"
 
-   if px is not None and not chart_df.empty:
-        # Peta warna korporat yang kemas (Emerald Green, Amber, Soft Red, Slate)
+    # >>> PASTIKAN BARIS IF DI BAWAH INI SEBARIS DENGAN IF-ELSE DI ATAS <<<
+    if px is not None and not chart_df.empty:
         status_color_map = {
-            "FAIR_AVERAGE": "#10b981",       # Green (Emerald)
-            "UNDERLOAD_AVERAGE": "#f59e0b",  # Amber / Yellow
-            "OVERLOAD_AVERAGE": "#ef4444",   # Red
-            "FAIR": "#10b981",               # Backup match untuk string biasa
+            "FAIR_AVERAGE": "#10b981",
+            "UNDERLOAD_AVERAGE": "#f59e0b",
+            "OVERLOAD_AVERAGE": "#ef4444",
+            "FAIR": "#10b981",
             "UNDERLOAD": "#f59e0b",
             "OVERLOAD": "#ef4444"
         }
@@ -868,20 +870,18 @@ with tabs[3]:
             color="status_load",
             title="Workload Distribution: KS and Number of Subjects",
             hover_data=["jumlah_KS", "bil_subjek", "minimum_KS", "maksimum_KS", "senarai_subjek"],
-            color_discrete_map=status_color_map  # Guna peta warna premium baru
+            color_discrete_map=status_color_map
         )
         
-        # Kemas kini teks di dalam bar chart
         fig.update_traces(
             textposition="inside",
             textfont=dict(family="Inter, sans-serif", size=11, color="white"),
-            marker=dict(line=dict(width=0)) # Buang border hitam sekeliling bar
+            marker=dict(line=dict(width=0))
         )
         
-        # Rekaan Layout Glassmorphism / Putih Bersih
         fig.update_layout(
             height=760,
-            template="plotly_white",  # Tema latar putih bersih, tiada grid kelabu tebal
+            template="plotly_white",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             xaxis_title="Adjusted KS",
@@ -891,7 +891,6 @@ with tabs[3]:
                 font=dict(family="Inter, sans-serif", size=16, color="#0f172a", weight="bold"),
                 pad=dict(b=20)
             ),
-            # Kedudukan Petunjuk Warna (Legend) di bahagian atas
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -900,19 +899,17 @@ with tabs[3]:
                 x=1,
                 title=dict(text="")
             ),
-            # Kemas kini garisan grid halus di paksi X sahaja
             xaxis=dict(
                 showgrid=True,
                 gridcolor="#f1f5f9",
                 zeroline=False
             ),
             yaxis=dict(
-                autorange="reversed" # Letakkan pensyarah beban tertinggi di atas sekali
+                autorange="reversed"
             )
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        # Jika paparan fallback dataframe, tukar kepada HTML Table yang diclean juga
         cols_chart_df = ["pensyarah", "jumlah_KS_adjusted", "bil_subjek", "status_load"]
         df_chart_clean = chart_df[cols_chart_df] if all(c in chart_df.columns for c in cols_chart_df) else chart_df
         st.write(df_chart_clean.to_html(index=False, classes='clean-table'), unsafe_allow_html=True)
