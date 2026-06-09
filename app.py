@@ -169,7 +169,7 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
                     "weeks": r.get("replacement_week", ""),
                     "KS_change": -float(r.get("subject_KS", 0)),
                     "reason": r.get("emergency_reason", ""),
-                    "note": f"{r.get('emergency_lecturer','')} unavailable for Week {r.get('replacement_week','')}; covered by {r.get('replacement_lecturer','').}",
+                    "note": f"{r.get('emergency_lecturer','')} unavailable for Week {r.get('replacement_week','')}; covered by {r.get('replacement_lecturer','')}.",
                 })
 
     for c in week_cols:
