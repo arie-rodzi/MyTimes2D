@@ -876,6 +876,10 @@ with tabs[5]:
     for _df in [df_status, df_assign, df_summary_enhanced, df_temp_cover, emergency_log, weekly_analysis, semester_event_log, df_unassigned, df_closed, df_all]:
         if _df is not None and isinstance(_df, pd.DataFrame) and "semester_code" not in _df.columns:
             _df.insert(0, "semester_code", st.session_state.get("semester_code", ""))
+
+    # ------------------------------------------------------------
+    # BUTTON 1: DOWNLOAD EXCEL (Sedia Ada)
+    # ------------------------------------------------------------
     output = to_excel_bytes({
         "Metadata": metadata,
         "Status": df_status,
@@ -898,14 +902,108 @@ with tabs[5]:
         use_container_width=True,
     )
 
-st.markdown(
+    st.markdown("---")
+
+    # ------------------------------------------------------------
+    # BUTTON 2: DOWNLOAD FULL HTML REPORT (SEMUA SEKALI RESULT)
+    # ------------------------------------------------------------
+    st.markdown("### 🌐 Laporan Penuh Sistem MyTimes (HTML Format)")
+    st.caption("Butang di bawah akan memuat turun fail HTML premium yang menggabungkan kesemua keputusan dashboard, analisis mingguan, log kecemasan, dan tetapan manual.")
+
+    # Ambil data log manual jika wujud
+    df_manual_log = st.session_state.get("manual_tuning_log", pd.DataFrame())
+
+    # Menjana struktur kod HTML penuh dengan reka bentuk CSS moden
+    full_html_report = f"""
+    <!DOCTYPE html>
+    <html lang="ms">
+    <head>
+        <meta charset="UTF-8">
+        <title>Laporan Penuh MyTimes - Semester {st.session_state.get('semester_code','')}</title>
+        <style>
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f4f6f9; color: #333; line-height: 1.6; }}
+            .container {{ max-width: 1400px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
+            
+            /* Header Style */
+            .header {{ background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; padding: 30px; border-radius: 8px; margin-bottom: 30px; text-align: center; }}
+            .header h1 {{ margin: 0; font-size: 2.2em; letter-spacing: 1px; }}
+            .header p {{ margin: 10px 0 0 0; opacity: 0.9; font-size: 1.1em; }}
+            
+            /* Section & Card Style */
+            h2 {{ color: #1e3c72; border-left: 5px solid #2a5298; padding-left: 12px; margin-top: 40px; margin-bottom: 15px; font-size: 1.5em; }}
+            .meta-box {{ background-color: #eef2f7; padding: 15px; border-radius: 6px; font-size: 0.95em; margin-bottom: 20px; border-left: 4px solid #1e3c72; }}
+            .empty-msg {{ color: #7f8c8d; font-style: italic; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px dashed #ccc; }}
+            
+            /* Table Modern Design */
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; font-size: 0.9em; box-shadow: 0 2px 5px rgba(0,0,0,0.02); border-radius: 6px; overflow: hidden; }}
+            th {{ background-color: #2a5298; color: #ffffff; text-align: left; font-weight: 600; padding: 12px 15px; border: 1px solid #2a5298; }}
+            td {{ padding: 10px 15px; border: 1px solid #e1e8ed; background-color: #fff; }}
+            tr:nth-of-type(even) td {{ background-color: #f8fafc; }}
+            tr:hover td {{ background-color: #f1f5f9; }}
+            
+            /* Badges & Footer */
+            .badge-info {{ background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }}
+            .footer {{ text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid #e1e8ed; font-size: 0.85em; color: #7f8c8d; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>MyTimes Executive Dashboard Report</h1>
+                <p>Sistem Pengagihan Beban Kerja Pensyarah (KS Terminology)</p>
+            </div>
+
+            <div class="meta-box">
+                <b>Kod Semester:</b> {st.session_state.get('semester_code','')} | 
+                <b>Masa Pemprosesan:</b> {st.session_state.get('runtime_seconds', 0)} saat | 
+                <b>Tarikh Dijana:</b> {time.strftime('%d-%m-%Y %H:%M:%S')}
+            </div>
+
+            <h2>1. Ringkasan Status Agihan (Status Summary)</h2>
+            {df_status.to_html(index=False, classes='table') if df_status is not None else "<p class='empty-msg'>Tiada data status.</p>"}
+
+            <h2>2. Jadual Agihan Utama (Main Class Allocation)</h2>
+            {df_assign.to_html(index=False, classes='table') if df_assign is not None and not df_assign.empty else "<p class='empty-msg'>Tiada data kelas diagihkan.</p>"}
+
+            <h2>3. Analisis Beban Kerja Pensyarah (Lecturer Analysis Enhanced)</h2>
+            {df_summary_enhanced.to_html(index=False, classes='table') if df_summary_enhanced is not None and not df_summary_enhanced.empty else "<p class='empty-msg'>Tiada rekod data pensyarah.</p>"}
+
+            <h2>4. Garis Masa Beban Kerja Mingguan (Weekly Workload Timeline)</h2>
+            {weekly_analysis.to_html(index=False, classes='table') if weekly_analysis is not None and not weekly_analysis.empty else "<p class='empty-msg'>Tiada garis masa mingguan dijana.</p>"}
+
+            <h2>5. Nota Peristiwa Semester (Semester Event Notes)</h2>
+            {semester_event_log.to_html(index=False, classes='table') if semester_event_log is not None and not semester_event_log.empty else "<p class='empty-msg'>Tiada catatan nota peristiwa direkodkan.</p>"}
+
+            <h2>6. Log Kes Kecemasan (Emergency Replacement Log)</h2>
+            {emergency_log.to_html(index=False, classes='table') if emergency_log is not None and not emergency_log.empty else "<p class='empty-msg'>Tiada kes penukaran kecemasan (Emergency) dimasukkan.</p>"}
+
+            <h2>7. Log Pelarasan Manual (Manual Fine Tuning Log)</h2>
+            {df_manual_log.to_html(index=False, classes='table') if not df_manual_log.empty else "<p class='empty-msg'>Tiada sebarang perubahan manual (Fine Tuning) dibuat oleh AJK.</p>"}
+
+            <h2>8. Kes Cover Sementara (Temporary Cover Cases)</h2>
+            {df_temp_cover.to_html(index=False, classes='table') if df_temp_cover is not None and not df_temp_cover.empty else "<p class='empty-msg'>Tiada pensyarah masuk lewat / kes cover awal minggu.</p>"}
+
+            <h2>9. Kelas Tiada Agihan (Unallocated Classes)</h2>
+            {df_unassigned.to_html(index=False, classes='table') if df_unassigned is not None and not df_unassigned.empty else "<p class='empty-msg' style='color:#155724; background:#d4edda; border-color:#c3e6cb;'>Semua kelas aktif berjaya diagihkan sepenuhnya (Zero Unallocated).</p>"}
+
+            <h2>10. Kelas Ditutup (Closed Classes)</h2>
+            {df_closed.to_html(index=False, classes='table') if df_closed is not None and not df_closed.empty else "<p class='empty-msg'>Tiada kelas berstatus TUTUP.</p>"}
+
+            <div class="footer">
+                MyTimes © 2026 • Fair KS Distribution Engine • Generated via Executive Streamlit Portal
+            </div>
+        </div>
+    </body>
+    </html>
     """
-    <div class="footer">
-        MyTimes • Fair KS Distribution • Preference Compensation • Emergency Reallocation
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+
+    st.download_button(
+        "🌐 Download Full Result HTML",
+        data=full_html_report,
+        file_name=f"MyTimes_FULL_REPORT_{st.session_state.get('semester_code','')}.html",
+        mime="text/html",
+        use_container_width=True,
+    )
 
 
 st.sidebar.metric("Processing Time (sec)", st.session_state.get("runtime_seconds",0))
