@@ -41,11 +41,7 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
     """Create a week-by-week workload view.
 
     This is the fairer workload basis:
-    average_semester_load = (Week_1_KS + ... + Week_14_KS) / 14
-
-    It covers two different cases:
-    1. Temporary Cover: a lecturer covers early weeks and the original lecturer returns.
-    2. Emergency Replacement: a lecturer covers selected emergency weeks, either full class KS or split KS.
+    average_semester_load = (Week_mula + ... + Week_akhir) / jumlah_minggu_available
     """
     week_cols = [f"Week_{i}_KS" for i in range(1, SEMESTER_WEEKS + 1)]
     if df_summary is None or df_summary.empty:
@@ -98,7 +94,7 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
             ks = float(r.get("KS", 0))
             add_load(primary, weeks, ks)
 
-            # Temporary cover for late entry lecturer: cover lecturer carries the load before primary lecturer is available.
+            # Temporary cover for late entry lecturer
             cover = str(r.get("pensyarah_cover_sementara", "")).strip()
             if cover:
                 cover_weeks = _parse_week_text(r.get("minggu_cover_sementara", ""))
@@ -134,14 +130,13 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
                         "note": f"{primary} is not counted for Week {week_text} because {cover} covers the class temporarily.",
                     })
 
-    # Emergency replacement log. This includes temporary emergencies and permanent/selected-week emergencies.
+    # Emergency replacement log
     if emergency_log is not None and not emergency_log.empty:
         elog = emergency_log.copy()
         if "status" in elog.columns:
             elog = elog[elog["status"] == "OK"].copy()
 
         if not elog.empty:
-            # Remove original lecturer once per case/class/week. Split coverage has multiple replacement rows, but original load is removed once.
             unique_original = elog.drop_duplicates(subset=["case_no", "class_id", "replacement_week"])
             for _, r in unique_original.iterrows():
                 weeks = _parse_week_text(r.get("replacement_week", ""))
@@ -174,13 +169,42 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
                     "weeks": r.get("replacement_week", ""),
                     "KS_change": -float(r.get("subject_KS", 0)),
                     "reason": r.get("emergency_reason", ""),
-                    "note": f"{r.get('emergency_lecturer','')} unavailable for Week {r.get('replacement_week','')}; covered by {r.get('replacement_lecturer','')}.",
+                    "note": f"{r.get('emergency_lecturer','')} unavailable for Week {r.get('replacement_week','')}; covered by {r.get('replacement_lecturer','').}",
                 })
 
     for c in week_cols:
         weekly[c] = weekly[c].round(2).clip(lower=0)
 
-    weekly["average_semester_load"] = weekly[week_cols].mean(axis=1).round(2)
+    # ------------------------------------------------------------
+    # FIX LOGIK: Pengiraan Purata Mengikut Minggu Available Sahaja
+    # ------------------------------------------------------------
+    def hitung_purata_dinamik(row):
+        nama_p = row.get("pensyarah")
+        beban_mingguan = [float(row.get(f"Week_{i}_KS", 0)) for i in range(1, SEMESTER_WEEKS + 1)]
+        
+        # Cari profil pensyarah di dalam df_summary
+        match_summary = df_summary[df_summary["pensyarah"] == nama_p]
+        
+        if not match_summary.empty:
+            mula = int(match_summary.iloc[0].get("minggu_mula_available", 1))
+            akhir = int(match_summary.iloc[0].get("minggu_akhir_available", SEMESTER_WEEKS))
+            status_p = str(match_summary.iloc[0].get("status_pensyarah", "")).upper()
+            
+            # Jika pensyarah bercuti sepanjang semester, purata adalah 0
+            if status_p in ["CUTI", "TIDAK_AKTIF"] or mula > akhir:
+                return 0.0
+            
+            # Ambil senarai beban kerja pada minggu yang dia available sahaja
+            minggu_aktif_beban = beban_mingguan[mula - 1 : akhir]
+            
+            if len(minggu_aktif_beban) > 0:
+                return round(sum(minggu_aktif_beban) / len(minggu_aktif_beban), 2)
+        
+        # Fallback sekiranya lajur tiada, bahagi rata dengan total semester weeks (14)
+        return round(sum(beban_mingguan) / SEMESTER_WEEKS, 2)
+
+    # Kemas kini lajur dengan data dinamik yang betul
+    weekly["average_semester_load"] = weekly.apply(hitung_purata_dinamik, axis=1)
     weekly["peak_weekly_load"] = weekly[week_cols].max(axis=1).round(2)
     weekly["minimum_weekly_load"] = weekly[week_cols].min(axis=1).round(2)
     weekly["weekly_load_range"] = weekly["minimum_weekly_load"].astype(str) + " - " + weekly["peak_weekly_load"].astype(str)
@@ -199,7 +223,7 @@ def build_weekly_lecturer_analysis(df_assign, df_summary, emergency_log=None, se
         else ("UNDERLOAD_AVERAGE" if float(r["average_semester_load"]) < float(r.get("minimum_KS", 0)) else "FAIR_AVERAGE"),
         axis=1
     )
-    weekly["fairness_basis"] = "Average of Week 1 to Week 14"
+    weekly["fairness_basis"] = "Average of available teaching weeks"
 
     event_df = pd.DataFrame(event_rows)
     if not event_df.empty:
