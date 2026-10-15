@@ -21,7 +21,7 @@ from config_styles import (
 from data_utils import get_pref_score, get_pref_label, get_compensation_points, get_preference_reason, is_available_for_class
 
 
-def solve_allocation(dfc, dfl, pref):
+def solve_allocation(dfc, dfl, pref, time_limit=90):
     if pl is None:
         st.error("PuLP belum install. Sila install: pip install pulp")
         st.stop()
@@ -40,58 +40,57 @@ def solve_allocation(dfc, dfl, pref):
         l for l in lecturers
         if active[l] and int(lect_rows.loc[l, "minggu_mula_available"]) <= LATE_ENTRY_CUTOFF_WEEK
     ]
+    wajib_set = set(wajib_ajar)
 
     target_ks = round(int(dfc["ks"].sum()) / max(len(wajib_ajar), 1))
 
+    # Only create variables for eligible (class, lecturer) pairs. Inactive lecturers,
+    # lecturers entering after the cut-off week and unavailable pairs get no variable,
+    # which keeps the model small and fast.
+    pairs = [
+        (c, l) for c in classes for l in wajib_ajar
+        if is_available_for_class(lect_rows.loc[l], class_rows.loc[c])
+    ]
+    by_class = {c: [] for c in classes}
+    by_lect = {l: [] for l in wajib_ajar}
+    for c, l in pairs:
+        by_class[c].append(l)
+        by_lect[l].append(c)
+    lect_subjects = {l: sorted({cls_subject[c] for c in by_lect[l]}) for l in wajib_ajar}
+
     prob = pl.LpProblem("MyTimes_Fair_KS", pl.LpMinimize)
-    x = pl.LpVariable.dicts("x", (classes, lecturers), 0, 1, cat="Binary")
-    y = pl.LpVariable.dicts("y", (lecturers, subjects), 0, 1, cat="Binary")
-    under = pl.LpVariable.dicts("under", lecturers, lowBound=0)
-    over = pl.LpVariable.dicts("over", lecturers, lowBound=0)
+    x = pl.LpVariable.dicts("x", pairs, cat="Binary")
+    y = pl.LpVariable.dicts("y", [(l, s) for l in wajib_ajar for s in lect_subjects[l]], cat="Binary")
+    unassigned = pl.LpVariable.dicts("unassigned", classes, 0, 1, cat="Binary")
+    under = pl.LpVariable.dicts("under", wajib_ajar, lowBound=0)
+    over = pl.LpVariable.dicts("over", wajib_ajar, lowBound=0)
+    short = pl.LpVariable.dicts("short", wajib_ajar, lowBound=0)
+    no_class = pl.LpVariable.dicts("no_class", wajib_ajar, 0, 1, cat="Binary")
 
+    # Every class is assigned once; "unassigned" is a heavily penalised escape so the
+    # model is never infeasible (such classes appear in the Unassigned list instead).
     for c in classes:
-        prob += pl.lpSum(x[c][l] for l in lecturers) == 1
+        prob += pl.lpSum(x[(c, l)] for l in by_class[c]) + unassigned[c] == 1
 
-    for l in lecturers:
-        if not active[l]:
-            for c in classes:
-                prob += x[c][l] == 0
+    for l in wajib_ajar:
+        total_load = pl.lpSum(credit[c] * x[(c, l)] for c in by_lect[l])
+        personal_min = int(lect_rows.loc[l, "min_ks"])
+        personal_max = int(lect_rows.loc[l, "max_ks"])
+        personal_target = min(max(target_ks, personal_min), personal_max)
 
-    for c in classes:
-        for l in lecturers:
-            if not is_available_for_class(lect_rows.loc[l], class_rows.loc[c]):
-                prob += x[c][l] == 0
+        prob += total_load <= personal_max
+        # Minimum KS and "at least one class" are soft (big penalty) to avoid infeasibility.
+        prob += total_load + short[l] >= personal_min
+        prob += pl.lpSum(x[(c, l)] for c in by_lect[l]) + no_class[l] >= 1
+        prob += personal_target - total_load <= under[l]
+        prob += total_load - personal_target <= over[l]
 
-    for l in lecturers:
-        total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
-        start_week = int(lect_rows.loc[l, "minggu_mula_available"])
-
-        if l in wajib_ajar:
-            personal_min = int(lect_rows.loc[l, "min_ks"])
-            personal_max = int(lect_rows.loc[l, "max_ks"])
-            personal_target = min(max(target_ks, personal_min), personal_max)
-
-            prob += total_load >= personal_min
-            prob += total_load <= personal_max
-            prob += pl.lpSum(x[c][l] for c in classes) >= 1
-            prob += personal_target - total_load <= under[l]
-            prob += total_load - personal_target <= over[l]
-        else:
-            prob += under[l] == 0
-            prob += over[l] == 0
-            if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
-                prob += total_load == 0
-
-    for c in classes:
-        s = cls_subject[c]
-        for l in lecturers:
-            prob += x[c][l] <= y[l][s]
-
-    for l in lecturers:
-        prob += pl.lpSum(y[l][s] for s in subjects) <= MAX_SUBJECTS
-        for s in subjects:
-            subject_classes = [c for c in classes if cls_subject[c] == s]
-            prob += pl.lpSum(x[c][l] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT
+        prob += pl.lpSum(y[(l, s)] for s in lect_subjects[l]) <= MAX_SUBJECTS
+        for s in lect_subjects[l]:
+            subject_classes = [c for c in by_lect[l] if cls_subject[c] == s]
+            for c in subject_classes:
+                prob += x[(c, l)] <= y[(l, s)]
+            prob += pl.lpSum(x[(c, l)] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT * y[(l, s)]
 
     compensation_map = lect_rows["compensation_points"].to_dict() if "compensation_points" in lect_rows.columns else {l: 0 for l in lecturers}
 
@@ -102,22 +101,31 @@ def solve_allocation(dfc, dfl, pref):
         return base + int(compensation_map.get(lname, 0)) if base > 0 else 0
 
     preference_reward = pl.lpSum(
-        credit[c] * adjusted_pref_reward(l, cls_subject[c]) * x[c][l]
-        for c in classes for l in lecturers
+        credit[c] * adjusted_pref_reward(l, cls_subject[c]) * x[(c, l)]
+        for c, l in pairs
     )
+    # Weights are scaled by W_PREF to keep CBC coefficients small (same priority order).
+    w_fair = W_FAIRNESS / W_PREF
     fairness_penalty = pl.lpSum(under[l] + over[l] for l in wajib_ajar)
-    prob += W_FAIRNESS * fairness_penalty - W_PREF * preference_reward
+    prob += (
+        100 * w_fair * pl.lpSum(credit[c] * unassigned[c] for c in classes)
+        + 10 * w_fair * pl.lpSum(short[l] + no_class[l] for l in wajib_ajar)
+        + w_fair * fairness_penalty
+        - preference_reward
+    )
 
-    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=240)
+    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=time_limit, gapRel=0.02)
     prob.solve(solver)
     status = pl.LpStatus[prob.status]
 
     assigned_rows = []
-    if status == "Optimal":
-        for c in classes:
-            for l in lecturers:
-                if float(pl.value(x[c][l]) or 0) > 0.5:
-                    assigned_rows.append({"kelas_id": c, "pensyarah": l})
+    has_solution = any(pl.value(x[p]) is not None for p in pairs[:1]) if pairs else False
+    if status in ("Optimal", "Not Solved") and has_solution:
+        for c, l in pairs:
+            if float(pl.value(x[(c, l)]) or 0) > 0.5:
+                assigned_rows.append({"kelas_id": c, "pensyarah": l})
+        if status == "Not Solved":
+            status = "Feasible (time limit)"
 
     return status, pd.DataFrame(assigned_rows), target_ks
 

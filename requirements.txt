@@ -4,4 +4,4 @@ numpy==1.26.4
 openpyxl
 plotly
 xlsxwriter
-pulp
+pulp==3.3.2
