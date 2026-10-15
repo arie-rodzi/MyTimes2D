@@ -21,7 +21,7 @@ from config_styles import (
 from data_utils import get_pref_score, get_pref_label, get_compensation_points, get_preference_reason, is_available_for_class
 
 
-def solve_allocation(dfc, dfl, pref, time_limit=90):
+def solve_allocation(dfc, dfl, pref, time_limit=360):
     if pl is None:
         st.error("PuLP belum install. Sila install: pip install pulp")
         st.stop()
@@ -114,7 +114,7 @@ def solve_allocation(dfc, dfl, pref, time_limit=90):
         - preference_reward
     )
 
-    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=time_limit, gapRel=0.02)
+    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=time_limit, gapRel=0)
     prob.solve(solver)
     status = pl.LpStatus[prob.status]
 
